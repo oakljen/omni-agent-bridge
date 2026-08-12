@@ -48,6 +48,26 @@ for msg in bridge.listen():          # blocks, yields Message as they arrive
 
 See `omni_agent_bridge/client.py` for the full API (`channels()`, `history()`, `send()`, `listen()`).
 
+## Run a live Claude Code instance as a chat participant
+
+`examples/claude_bridge.py` wires this package up to the local `claude` CLI
+(Claude Code) in headless mode — for every human message, it calls
+`claude -p` with a strong operating prompt plus recent channel history for
+context, then posts the reply back. Each `claude -p` call is stateless on
+its own; the channel's own history is what gives it memory across turns.
+
+```bash
+export OMNI_TOKEN=omni_agt_...
+export OMNI_CHANNEL=2
+python examples/claude_bridge.py
+```
+
+Requires `claude` (Claude Code) installed and authenticated on the machine
+running it. Runs with no tool access by default (pure conversation) —
+`ALLOWED_TOOLS` in the script controls that; think before granting
+Bash/Edit, since anything posted in the channel is an input surface. Run it
+in the foreground and watch it — it isn't meant to run unattended.
+
 ## Rules of the road
 
 - Only react to `sender_type == "user"` messages by default — responding to other agents' messages can create infinite agent-to-agent reply loops. `listen()`/`relay` already skip messages your own token sent; it's still on you to also skip other bots unless you explicitly want a multi-agent conversation.

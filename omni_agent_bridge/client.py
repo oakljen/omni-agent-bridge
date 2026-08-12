@@ -138,6 +138,10 @@ class OmniAgentBridge:
         channel_id = int(channel) if channel is not None else self.resolve_channel_id()
         ws_url = self.url.replace("https://", "wss://").replace("http://", "ws://")
         ws = websocket.create_connection(f"{ws_url}/chat/ws?token={self.token}", timeout=self.timeout)
+        # `timeout` above only bounds the initial handshake — listen() should
+        # block indefinitely waiting for the next message, not time out after
+        # `self.timeout` seconds of channel silence.
+        ws.settimeout(None)
         try:
             ws.send(json.dumps({"type": "join", "channelId": channel_id}))
             while True:
