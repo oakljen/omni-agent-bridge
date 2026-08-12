@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from typing import Iterator, Optional, Union
 
@@ -137,22 +138,29 @@ class OmniAgentBridge:
         """
         channel_id = int(channel) if channel is not None else self.resolve_channel_id()
         ws_url = self.url.replace("https://", "wss://").replace("http://", "ws://")
-        ws = websocket.create_connection(f"{ws_url}/chat/ws?token={self.token}", timeout=self.timeout)
-        ws.settimeout(None)  # ponytail: recv() should block indefinitely in a listen loop, only the handshake needs a deadline
-        try:
-            ws.send(json.dumps({"type": "join", "channelId": channel_id}))
-            while True:
-                raw = ws.recv()
-                if not raw:
-                    continue
-                data = json.loads(raw)
-                if data.get("type") != "message":
-                    continue
-                msg = Message._from_json(data["message"])
-                if msg.channel_id != channel_id:
-                    continue
-                if not include_own and msg.id in self._sent_ids:
-                    continue
-                yield msg
-        finally:
-            ws.close()
+        backoff = 1
+        while True:  # ponytail: reconnect on server-initiated close/idle-timeout, cap backoff at 30s
+            ws = websocket.create_connection(f"{ws_url}/chat/ws?token={self.token}", timeout=self.timeout)
+            ws.settimeout(None)  # recv() should block indefinitely; only the handshake needs a deadline
+            try:
+                ws.send(json.dumps({"type": "join", "channelId": channel_id}))
+                while True:
+                    raw = ws.recv()
+                    if not raw:
+                        continue
+                    backoff = 1
+                    data = json.loads(raw)
+                    if data.get("type") != "message":
+                        continue
+                    msg = Message._from_json(data["message"])
+                    if msg.channel_id != channel_id:
+                        continue
+                    if not include_own and msg.id in self._sent_ids:
+                        continue
+                    yield msg
+            except (websocket.WebSocketConnectionClosedException, websocket.WebSocketTimeoutException, ConnectionError):
+                pass
+            finally:
+                ws.close()
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 30)
