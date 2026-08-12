@@ -138,6 +138,7 @@ class OmniAgentBridge:
         channel_id = int(channel) if channel is not None else self.resolve_channel_id()
         ws_url = self.url.replace("https://", "wss://").replace("http://", "ws://")
         ws = websocket.create_connection(f"{ws_url}/chat/ws?token={self.token}", timeout=self.timeout)
+        ws.settimeout(None)  # ponytail: recv() should block indefinitely in a listen loop, only the handshake needs a deadline
         try:
             ws.send(json.dumps({"type": "join", "channelId": channel_id}))
             while True:
